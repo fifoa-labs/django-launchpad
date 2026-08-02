@@ -9,6 +9,11 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 PACKAGE := launchpad
+DIST_NAME := django-launchpad
+
+DJANGO_SETTINGS := tests.settings
+DJANGO := uv run python -m django
+
 DIST_DIR := dist
 BUILD_DIR := build
 
@@ -48,6 +53,36 @@ typecheck: ## Run mypy
 	uv run mypy src tests
 
 # ============================================
+# 🗄️ DJANGO MIGRATIONS
+# --------------------------------------------
+
+.PHONY: django-check makemigrations migrations-check migrate migrations-plan
+
+django-check: ## Run Django's system checks
+	$(DJANGO) check \
+		--settings=$(DJANGO_SETTINGS)
+
+makemigrations: ## Generate migrations for the Launchpad application
+	$(DJANGO) makemigrations $(PACKAGE) \
+		--settings=$(DJANGO_SETTINGS)
+
+migrations-check: ## Verify that model changes have matching migrations
+	$(DJANGO) makemigrations \
+		--check \
+		--dry-run \
+		--settings=$(DJANGO_SETTINGS)
+
+migrate: ## Apply all migrations to a temporary in-memory database
+	$(DJANGO) migrate \
+		--settings=$(DJANGO_SETTINGS) \
+		--noinput
+
+migrations-plan: ## Display the migration execution plan
+	$(DJANGO) migrate \
+		--plan \
+		--settings=$(DJANGO_SETTINGS)
+
+# ============================================
 # 🧪 TESTING & COVERAGE
 # --------------------------------------------
 
@@ -72,12 +107,15 @@ coverage: ## Run tests with branch coverage
 
 .PHONY: check ci
 
-check: format-check lint typecheck test ## Run all local validation checks
+check: format-check lint typecheck django-check migrations-check migrate test ## Run all local validation checks
 
 ci: ## Run the complete CI validation pipeline
 	$(MAKE) format-check
 	$(MAKE) lint
 	$(MAKE) typecheck
+	$(MAKE) django-check
+	$(MAKE) migrations-check
+	$(MAKE) migrate
 	$(MAKE) coverage
 	$(MAKE) build
 	$(MAKE) check-dist
@@ -120,13 +158,16 @@ install-wheel: ## Install the built wheel into a temporary clean environment
 		--python "$$test_dir/bin/python" \
 		"$$wheel"; \
 	"$$test_dir/bin/python" -c \
-		'import django; import launchpad; from importlib.metadata import version; print("Installed:", version("django-launchpad")); print("Django:", django.get_version()); print("Package:", launchpad.__file__)'
+		'import django; import launchpad; from importlib.metadata import version; print("Installed:", version("$(DIST_NAME)")); print("Django:", django.get_version()); print("Package:", launchpad.__file__)'
 
 release-check: ## Run full release validation
 	$(MAKE) clean
 	$(MAKE) format-check
 	$(MAKE) lint
 	$(MAKE) typecheck
+	$(MAKE) django-check
+	$(MAKE) migrations-check
+	$(MAKE) migrate
 	$(MAKE) coverage
 	$(MAKE) build
 	$(MAKE) check-dist
@@ -135,8 +176,11 @@ release-check: ## Run full release validation
 		echo "No wheel found after build."; \
 		exit 1; \
 	fi; \
-	unzip -l "$$wheel" | grep -q "launchpad/py.typed"; \
-	echo "✅ Wheel contains launchpad/py.typed"
+	unzip -l "$$wheel" | grep -q "$(PACKAGE)/py.typed"; \
+	unzip -l "$$wheel" | grep -q "$(PACKAGE)/migrations/__init__.py"; \
+	unzip -l "$$wheel" | grep -q "$(PACKAGE)/migrations/0001_initial.py"; \
+	unzip -l "$$wheel" | grep -q "$(PACKAGE)/templates/$(PACKAGE)/generic/tree.html"; \
+	echo "✅ Wheel contains typing marker, migrations, and templates"
 	$(MAKE) install-wheel
 
 # ============================================
@@ -195,7 +239,6 @@ tree: ## List files under <folder>: make tree [folder=<folder>]
 		-not -path "*/*_cache/*" \
 		-not -path "*/htmlcov/*" \
 		-not -path "*/staticfiles/*" \
-		-not -path "*/migrations/*" \
 		-not -path "*/.venv/*" \
 		-not -path "*/venv/*" \
 		-not -path "*/dist/*" \

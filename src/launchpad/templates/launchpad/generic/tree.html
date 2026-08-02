@@ -1,0 +1,194 @@
+{# src/launchpad/templates/launchpad/generic/tree.html #}
+{% load i18n %}
+
+{% comment %}
+  src/launchpad/templates/launchpad/generic/tree.html
+
+  Generic recursive Launchpad tree renderer.
+
+  This template is intentionally location-agnostic. It provides a basic
+  renderer for validating and displaying a Launchpad tree before introducing
+  a theme-specific sidebar, topbar, card grid, dropdown, footer, or mobile
+  navigation renderer.
+
+  Top-level usage:
+
+      {% include "launchpad/generic/tree.html" with launchpad=navigation only %}
+
+  Recursive rendering is handled internally by passing ``nodes`` and ``level``.
+{% endcomment %}
+
+{% if nodes %}
+  <ul
+    class="launchpad-tree launchpad-tree-level-{{ level|default:0 }}"
+    data-launchpad-level="{{ level|default:0 }}"
+    role="list"
+  >
+    {% for node in nodes %}
+      {% if node.is_separator %}
+        <li
+          class="launchpad-node launchpad-node-separator"
+          role="separator"
+          aria-hidden="true"
+        ></li>
+
+      {% elif node.is_section %}
+        <li
+          class="launchpad-node launchpad-node-section{% if node.is_active %} is-active{% endif %}"
+          data-launchpad-node="{{ node.code }}"
+        >
+          {% if node.title or node.description or node.icon.kind != "none" %}
+            <div
+              class="launchpad-section-header"
+              {% if node.tooltip %}title="{{ node.tooltip }}"{% endif %}
+            >
+              {% if node.icon.kind != "none" %}
+                <span class="launchpad-icon" aria-hidden="true">
+                  {% if node.icon.kind == "emoji" %}
+                    {{ node.icon.value }}
+                  {% elif node.icon.kind == "fa" %}
+                    <i class="{{ node.icon.value }}"></i>
+                  {% elif node.icon.kind == "fe" %}
+                    <i data-feather="{{ node.icon.value }}"></i>
+                  {% endif %}
+                </span>
+              {% endif %}
+
+              {% if node.title %}
+                <span class="launchpad-section-title">
+                  {{ node.title }}
+                </span>
+              {% endif %}
+
+              {% if node.description %}
+                <small class="launchpad-section-description">
+                  {{ node.description }}
+                </small>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {% if node.children %}
+            {% include "launchpad/generic/tree.html" with nodes=node.children level=level|add:"1" only %}
+          {% endif %}
+        </li>
+
+      {% elif node.is_link %}
+        <li
+          class="launchpad-node launchpad-node-link{% if node.is_active %} is-active{% endif %}{% if not node.enabled %} is-disabled{% endif %}"
+          data-launchpad-node="{{ node.code }}"
+        >
+          {% if node.enabled and node.url != "#" %}
+            <a
+              class="launchpad-link"
+              href="{{ node.url }}"
+              {% if node.target and node.target != "_self" %}
+                target="{{ node.target }}"
+              {% endif %}
+              {% if node.rel %}
+                rel="{{ node.rel }}"
+              {% endif %}
+              {% if node.download %}
+                download
+              {% endif %}
+              {% if node.tooltip %}
+                title="{{ node.tooltip }}"
+              {% endif %}
+              {% if node.aria_label %}
+                aria-label="{{ node.aria_label }}"
+              {% endif %}
+              {% if node.is_active and not node.children %}
+                aria-current="page"
+              {% endif %}
+            >
+              {% if node.icon.kind != "none" %}
+                <span class="launchpad-icon" aria-hidden="true">
+                  {% if node.icon.kind == "emoji" %}
+                    {{ node.icon.value }}
+                  {% elif node.icon.kind == "fa" %}
+                    <i class="{{ node.icon.value }}"></i>
+                  {% elif node.icon.kind == "fe" %}
+                    <i data-feather="{{ node.icon.value }}"></i>
+                  {% endif %}
+                </span>
+              {% endif %}
+
+              <span class="launchpad-link-content">
+                <span class="launchpad-link-title">
+                  {{ node.title }}
+                </span>
+
+                {% if node.description %}
+                  <small class="launchpad-link-description">
+                    {{ node.description }}
+                  </small>
+                {% endif %}
+              </span>
+            </a>
+          {% else %}
+            <span
+              class="launchpad-link launchpad-link-disabled"
+              aria-disabled="true"
+              {% if node.tooltip %}
+                title="{{ node.tooltip }}"
+              {% elif node.disabled_reason %}
+                title="{{ node.disabled_reason }}"
+              {% endif %}
+              {% if node.aria_label %}
+                aria-label="{{ node.aria_label }}"
+              {% endif %}
+            >
+              {% if node.icon.kind != "none" %}
+                <span class="launchpad-icon" aria-hidden="true">
+                  {% if node.icon.kind == "emoji" %}
+                    {{ node.icon.value }}
+                  {% elif node.icon.kind == "fa" %}
+                    <i class="{{ node.icon.value }}"></i>
+                  {% elif node.icon.kind == "fe" %}
+                    <i data-feather="{{ node.icon.value }}"></i>
+                  {% endif %}
+                </span>
+              {% endif %}
+
+              <span class="launchpad-link-content">
+                <span class="launchpad-link-title">
+                  {{ node.title }}
+                </span>
+
+                {% if node.description %}
+                  <small class="launchpad-link-description">
+                    {{ node.description }}
+                  </small>
+                {% endif %}
+
+                {% if node.disabled_reason %}
+                  <small class="launchpad-disabled-reason">
+                    {{ node.disabled_reason }}
+                  </small>
+                {% endif %}
+              </span>
+            </span>
+          {% endif %}
+
+          {% if node.children %}
+            {% include "launchpad/generic/tree.html" with nodes=node.children level=level|add:"1" only %}
+          {% endif %}
+        </li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+
+{% elif launchpad and launchpad.exists %}
+  <div
+    class="launchpad"
+    data-launchpad-code="{{ launchpad.code }}"
+  >
+    {% if launchpad.nodes %}
+      {% include "launchpad/generic/tree.html" with nodes=launchpad.nodes level=0 only %}
+    {% else %}
+      <p class="launchpad-empty">
+        {% trans "No navigation items are available." %}
+      </p>
+    {% endif %}
+  </div>
+{% endif %}

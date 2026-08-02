@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-    { name = "Fifoa Labs", email = "labs@fifoa.com" },
+    { name = "FIFOA Labs", email = "labs@fifoa.com" },
 ]
 keywords = [
     "django",
@@ -76,6 +76,9 @@ addopts = [
 [tool.coverage.run]
 branch = true
 source = ["launchpad"]
+omit = [
+    "*/launchpad/migrations/*",
+]
 
 [tool.coverage.report]
 show_missing = true
@@ -85,6 +88,9 @@ fail_under = 100
 [tool.ruff]
 target-version = "py311"
 line-length = 88
+extend-exclude = [
+    "src/launchpad/migrations",
+]
 
 [tool.ruff.lint]
 select = [
@@ -122,6 +128,9 @@ files = [
 ]
 plugins = [
     "mypy_django_plugin.main",
+]
+exclude = [
+    "^src/launchpad/migrations/",
 ]
 
 [tool.django-stubs]
