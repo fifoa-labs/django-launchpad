@@ -7,12 +7,15 @@ Tests for the Launchpad Django application configuration.
 from __future__ import annotations
 
 import importlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.apps import apps
 
 from launchpad import apps as launchpad_apps
 from launchpad.apps import LaunchpadConfig
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_launchpad_app_config() -> None:
@@ -25,7 +28,7 @@ def test_launchpad_app_config() -> None:
 
 
 def test_launchpad_app_ready_registers_signals(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """App startup should import Launchpad signal registrations."""
     imported: list[str] = []

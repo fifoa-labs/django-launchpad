@@ -1,7 +1,8 @@
 """
 src/launchpad/templatetags/launchpad_tags.py
 
-Template tags for loading renderer-neutral Launchpad trees.
+Template tags for loading renderer-neutral Launchpad trees and applying
+optional presentation-only helpers.
 
 Launchpad deliberately separates data loading from presentation.
 
@@ -15,20 +16,93 @@ Example:
 
 The current template context is passed to the reader, allowing configured
 URLs such as ``@context.person.pk`` to resolve at render time.
+
+Presentation helpers such as ``launchpad_pad`` operate only on already
+resolved data. They never create database records or alter Launchpad
+configuration.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from django import template
 
 from launchpad.readers import (
     ResolvedLaunchpad,
+    ResolvedNode,
     get_launchpad as read_launchpad,
 )
 
 register = template.Library()
+
+
+@dataclass(frozen=True, slots=True)
+class _LaunchpadPlaceholder:
+    """
+    Internal render-only placeholder used to balance item collections.
+
+    A placeholder is not a NavigationLink or LaunchpadNode and is never stored
+    in the database or persistent cache.
+
+    It exists only after Launchpad resolution and is intended for optional
+    presentation balancing such as card grids.
+    """
+
+    is_placeholder: bool = True
+
+    title: str = "More to Explore"
+    short_title: str = "More to Explore"
+
+    description: str = "New tools, reports, and operational insights will appear here."
+
+    tooltip: str = ""
+    aria_label: str = "More to Explore"
+    cta_label: str = ""
+
+    url: str = "#"
+    target: str = ""
+    rel: str = ""
+    download: bool = False
+
+    icon: dict[str, str] = field(
+        default_factory=lambda: {
+            "kind": "emoji",
+            "value": "✨",
+        },
+    )
+
+    enabled: bool = False
+    disabled_reason: str = ""
+
+    is_active: bool = False
+
+    metadata: dict[str, Any] = field(
+        default_factory=dict,
+    )
+
+    children: tuple[()] = ()
+
+    @property
+    def is_link(self) -> bool:
+        """Return False because placeholders are not navigation links."""
+        return False
+
+    @property
+    def is_section(self) -> bool:
+        """Return False because placeholders are not structural sections."""
+        return False
+
+    @property
+    def is_separator(self) -> bool:
+        """Return False because placeholders are not separators."""
+        return False
+
+    @property
+    def has_children(self) -> bool:
+        """Return False because placeholders never contain children."""
+        return False
 
 
 def _flatten_context(
@@ -50,6 +124,65 @@ def _flatten_context(
     values.pop("None", None)
 
     return values
+
+
+def _pad_items(
+    items: list[Any],
+    *,
+    multiple: int,
+) -> list[Any]:
+    """
+    Pad an item collection to the requested multiple.
+
+    Padding is presentation-only.
+
+    Examples:
+
+        5 items, multiple=2
+            -> 6 items
+
+        5 items, multiple=3
+            -> 6 items
+
+        5 items, multiple=4
+            -> 8 items
+
+        6 items, multiple=3
+            -> unchanged
+
+    Existing items are never mutated.
+
+    Args:
+        items:
+            Resolved items to prepare for rendering.
+
+        multiple:
+            Positive number of items that should divide the final collection
+            evenly.
+
+    Returns:
+        A new list containing the original items plus zero or more
+        render-only placeholders.
+
+    Raises:
+        ValueError:
+            If ``multiple`` is less than 1.
+    """
+    if multiple < 1:
+        msg = "Launchpad padding multiple must be greater than 0."
+        raise ValueError(msg)
+
+    remainder = len(items) % multiple
+
+    if remainder == 0:
+        return list(items)
+
+    placeholder_count = multiple - remainder
+
+    return [
+        *items,
+        *(_LaunchpadPlaceholder() for _ in range(placeholder_count)),
+    ]
 
 
 @register.simple_tag(takes_context=True)
@@ -102,6 +235,58 @@ def get_launchpad(
     )
 
 
+@register.simple_tag
+def launchpad_pad(
+    items: list[ResolvedNode] | tuple[ResolvedNode, ...],
+    *,
+    multiple: int = 2,
+) -> list[ResolvedNode | _LaunchpadPlaceholder]:
+    """
+    Return a presentation-only padded copy of resolved Launchpad items.
+
+    The original resolved collection is never modified.
+
+    This helper is optional. Projects that do not need visual balancing should
+    render ``navigation.nodes`` directly.
+
+    Example:
+
+        {% get_launchpad "home" as navigation %}
+        {% launchpad_pad navigation.nodes multiple=2 as cards %}
+
+        {% for item in cards %}
+            ...
+        {% endfor %}
+
+    ``multiple`` does not attempt to detect browser viewport width or CSS
+    breakpoints. It simply pads the collection to a requested item multiple.
+
+    Examples:
+
+        multiple=2
+            useful for paired layouts
+
+        multiple=3
+            useful for three-column presentation
+
+        multiple=6
+            useful when a renderer wants complete groups of six
+
+    A placeholder is:
+
+    - not persisted,
+    - not cached,
+    - not visible to the reader,
+    - not part of permission evaluation,
+    - and not a NavigationLink or LaunchpadNode.
+    """
+    return _pad_items(
+        list(items),
+        multiple=multiple,
+    )
+
+
 __all__ = [
     "get_launchpad",
+    "launchpad_pad",
 ]
