@@ -37,30 +37,49 @@ def _render(
 @pytest.mark.parametrize(
     ("item_count", "columns", "expected"),
     [
+        # 1-column layout: every count is either one row or perfectly divisible.
         (0, 1, None),
         (1, 1, None),
         (3, 1, None),
         (16, 1, None),
-        (1, 2, 6),
+        # 2-column layout.
+        (1, 2, None),
         (2, 2, None),
         (3, 2, 6),
+        (4, 2, None),
+        (5, 2, 6),
         (16, 2, None),
-        (1, 3, 8),
-        (2, 3, 4),
+        # 3-column layout.
+        (1, 3, None),
+        (2, 3, None),
         (3, 3, None),
         (4, 3, 8),
+        (5, 3, 4),
+        (6, 3, None),
         (16, 3, 8),
-        (1, 4, 9),
-        (2, 4, 6),
-        (3, 4, 3),
+        # 4-column layout.
+        (1, 4, None),
+        (2, 4, None),
+        (3, 4, None),
         (4, 4, None),
+        (5, 4, 9),
+        (6, 4, 6),
+        (7, 4, 3),
+        (8, 4, None),
         (16, 4, None),
-        (1, 6, 10),
-        (2, 6, 8),
-        (3, 6, 6),
-        (4, 6, 4),
-        (5, 6, 2),
+        # 6-column layout.
+        (1, 6, None),
+        (2, 6, None),
+        (3, 6, None),
+        (4, 6, None),
+        (5, 6, None),
         (6, 6, None),
+        (7, 6, 10),
+        (8, 6, 8),
+        (9, 6, 6),
+        (10, 6, 4),
+        (11, 6, 2),
+        (12, 6, None),
         (16, 6, 4),
     ],
 )
@@ -69,7 +88,7 @@ def test_padding_span_returns_missing_grid_width(
     columns: int,
     expected: int | None,
 ) -> None:
-    """Padding span should consume exactly the unused portion of a row."""
+    """Padding should fill only an incomplete row after wrapping."""
     assert (
         presentation._padding_span(  # noqa: SLF001
             item_count,
@@ -183,14 +202,12 @@ def test_display_class_builds_bootstrap_class(
 
 
 def test_responsive_padding_classes_for_three_items() -> None:
-    """Three items should balance only breakpoints with incomplete rows."""
+    """Three items should balance only the wrapped two-column layout."""
     result = presentation._responsive_padding_classes(  # noqa: SLF001
         3,
     )
 
-    assert result == (
-        "d-none d-sm-block col-sm-6 d-md-none d-lg-block col-lg-3 d-xl-block col-xl-6"
-    )
+    assert result == ("d-none d-sm-block col-sm-6 d-md-none d-lg-none d-xl-none")
 
 
 def test_responsive_padding_classes_for_sixteen_items() -> None:
@@ -228,8 +245,8 @@ def test_responsive_padding_classes_for_zero_items() -> None:
     ("item_count", "expected"),
     [
         (0, False),
-        (1, True),
-        (2, True),
+        (1, False),
+        (2, False),
         (3, True),
         (4, True),
         (5, True),
@@ -244,7 +261,7 @@ def test_build_placeholder_only_when_a_breakpoint_needs_balance(
     item_count: int,
     expected: bool,  # noqa: FBT001
 ) -> None:
-    """A placeholder should exist only when at least one layout needs it."""
+    """A placeholder should exist only when a wrapped row needs balancing."""
     result = presentation._build_placeholder(  # noqa: SLF001
         item_count,
     )
@@ -253,7 +270,7 @@ def test_build_placeholder_only_when_a_breakpoint_needs_balance(
 
 
 def test_build_placeholder_for_three_items_has_expected_classes() -> None:
-    """The responsive descriptor should carry its computed CSS classes."""
+    """Three items should balance only after wrapping into two columns."""
     placeholder = presentation._build_placeholder(  # noqa: SLF001
         3,
     )
@@ -261,7 +278,7 @@ def test_build_placeholder_for_three_items_has_expected_classes() -> None:
     assert placeholder is not None
 
     assert placeholder.classes == (
-        "d-none d-sm-block col-sm-6 d-md-none d-lg-block col-lg-3 d-xl-block col-xl-6"
+        "d-none d-sm-block col-sm-6 d-md-none d-lg-none d-xl-none"
     )
 
 
@@ -380,8 +397,8 @@ def test_launchpad_pad_template_tag_returns_responsive_placeholder() -> None:
 
     assert normalized == (
         "True| More to Explore| "
-        "d-none d-sm-block col-sm-6 d-md-none "
-        "d-lg-block col-lg-3 d-xl-block col-xl-6"
+        "d-none d-sm-block col-sm-6 "
+        "d-md-none d-lg-none d-xl-none"
     )
 
 
@@ -443,9 +460,7 @@ def test_launchpad_pad_works_with_real_resolved_nodes() -> None:
     )
 
     assert normalized == (
-        "3| True| "
-        "d-none d-sm-block col-sm-6 d-md-none "
-        "d-lg-block col-lg-3 d-xl-block col-xl-6"
+        "3| True| d-none d-sm-block col-sm-6 d-md-none d-lg-none d-xl-none"
     )
 
 
@@ -490,3 +505,30 @@ def test_presentation_module_exports_launchpad_pad() -> None:
     assert presentation.__all__ == [
         "launchpad_pad",
     ]
+
+
+@pytest.mark.parametrize(
+    ("item_count", "columns"),
+    [
+        (1, 2),
+        (2, 3),
+        (3, 3),
+        (3, 4),
+        (3, 6),
+        (4, 4),
+        (5, 6),
+        (6, 6),
+    ],
+)
+def test_padding_span_does_not_balance_single_row(
+    item_count: int,
+    columns: int,
+) -> None:
+    """A collection that fits on one row should never receive padding."""
+    assert (
+        presentation._padding_span(  # noqa: SLF001
+            item_count,
+            columns=columns,
+        )
+        is None
+    )

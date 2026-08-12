@@ -144,26 +144,35 @@ def _padding_span(
     columns: int,
 ) -> int | None:
     """
-    Return the Bootstrap grid span needed to complete one row.
+    Return the Bootstrap grid span needed to complete a wrapped final row.
 
     Bootstrap rows use twelve grid units.
 
-    If the real items already complete the row, return ``None``.
+    Padding is needed only when:
+
+    - the item collection has wrapped beyond the first row, and
+    - the final row is incomplete.
+
+    If all items fit on one row, no balancing placeholder is needed.
 
     Examples:
 
+        3 items / 6 columns
+            one row only
+            no placeholder
+
         3 items / 2 columns
-            remainder = 1
+            rows: 2 / 1
             missing = 1
             span = 6
 
         16 items / 3 columns
-            remainder = 1
+            rows: 3 / 3 / 3 / 3 / 3 / 1
             missing = 2
             span = 8
 
         16 items / 4 columns
-            remainder = 0
+            rows: 4 / 4 / 4 / 4
             no placeholder
     """
     if columns < 1:
@@ -173,6 +182,9 @@ def _padding_span(
     if 12 % columns != 0:
         msg = "Launchpad grid columns must divide evenly into 12."
         raise ValueError(msg)
+
+    if item_count <= columns:
+        return None
 
     remainder = item_count % columns
 
