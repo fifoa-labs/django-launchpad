@@ -92,6 +92,9 @@ extend-exclude = [
     "src/launchpad/migrations",
 ]
 
+[tool.ruff.format]
+exclude = ["*.md"]
+
 [tool.ruff.lint]
 select = [
   "F", "E", "W", "C90", "I", "N", "UP", "YTT", "ASYNC", "S", "BLE",
