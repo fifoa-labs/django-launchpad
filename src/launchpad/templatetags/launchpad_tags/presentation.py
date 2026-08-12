@@ -7,6 +7,20 @@ Presentation helpers operate only on data that has already passed through
 Launchpad resolution. They never create database records, alter Launchpad
 configuration, participate in visibility evaluation, or modify persistent
 cache data.
+
+The responsive padding helper provides one render-only placeholder that may
+expand to consume the unused portion of a responsive grid row.
+
+The default layout matches a common Bootstrap card grid:
+
+- xs: 1 column
+- sm: 2 columns
+- md: 3 columns
+- lg: 4 columns
+- xl: 6 columns
+
+The placeholder is hidden at breakpoints where the real items already fill
+their final row exactly.
 """
 
 from __future__ import annotations
@@ -20,17 +34,28 @@ if TYPE_CHECKING:
     from launchpad.readers import ResolvedNode
 
 
+_DEFAULT_BREAKPOINT_COLUMNS = (
+    ("", 1),
+    ("sm", 2),
+    ("md", 3),
+    ("lg", 4),
+    ("xl", 6),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class _LaunchpadPlaceholder:
     """
-    Internal render-only placeholder used to balance item collections.
+    Internal render-only placeholder used to balance responsive grids.
 
     A placeholder is not a NavigationLink or LaunchpadNode and is never stored
     in the database or persistent cache.
 
-    It exists only after Launchpad resolution and is intended for optional
-    presentation balancing such as card grids.
+    Its responsive CSS classes allow one placeholder to appear only where a
+    grid has unused space and to expand across exactly that unused space.
     """
+
+    classes: str
 
     is_placeholder: bool = True
 
@@ -87,68 +112,180 @@ class _LaunchpadPlaceholder:
         return False
 
 
-def _pad_items(
-    items: list[Any],
+def _column_class(
+    breakpoint: str,  # noqa: A002
     *,
-    multiple: int,
-) -> list[Any]:
+    span: int,
+) -> str:
+    """Return one responsive Bootstrap column class."""
+    if breakpoint:
+        return f"col-{breakpoint}-{span}"
+
+    return f"col-{span}"
+
+
+def _display_class(
+    breakpoint: str,  # noqa: A002
+    *,
+    visible: bool,
+) -> str:
+    """Return one responsive Bootstrap display class."""
+    display = "block" if visible else "none"
+
+    if breakpoint:
+        return f"d-{breakpoint}-{display}"
+
+    return f"d-{display}"
+
+
+def _padding_span(
+    item_count: int,
+    *,
+    columns: int,
+) -> int | None:
     """
-    Pad an item collection to the requested multiple.
+    Return the Bootstrap grid span needed to complete one row.
 
-    Padding is presentation-only.
+    Bootstrap rows use twelve grid units.
 
-    Existing items are never mutated.
+    If the real items already complete the row, return ``None``.
 
-    Args:
-        items:
-            Resolved items to prepare for rendering.
+    Examples:
 
-        multiple:
-            Positive number of items that should divide the final collection
-            evenly.
+        3 items / 2 columns
+            remainder = 1
+            missing = 1
+            span = 6
 
-    Returns:
-        A new list containing the original items plus zero or more
-        render-only placeholders.
+        16 items / 3 columns
+            remainder = 1
+            missing = 2
+            span = 8
 
-    Raises:
-        ValueError:
-            If ``multiple`` is less than 1.
+        16 items / 4 columns
+            remainder = 0
+            no placeholder
     """
-    if multiple < 1:
-        msg = "Launchpad padding multiple must be greater than 0."
+    if columns < 1:
+        msg = "Launchpad grid columns must be greater than 0."
         raise ValueError(msg)
 
-    remainder = len(items) % multiple
+    if 12 % columns != 0:
+        msg = "Launchpad grid columns must divide evenly into 12."
+        raise ValueError(msg)
+
+    remainder = item_count % columns
 
     if remainder == 0:
-        return list(items)
+        return None
 
-    placeholder_count = multiple - remainder
+    missing_columns = columns - remainder
+    units_per_column = 12 // columns
 
-    return [
-        *items,
-        *(_LaunchpadPlaceholder() for _ in range(placeholder_count)),
-    ]
+    return missing_columns * units_per_column
+
+
+def _responsive_padding_classes(
+    item_count: int,
+) -> str | None:
+    """
+    Return responsive classes for one balancing placeholder.
+
+    The placeholder is explicitly shown or hidden at every supported
+    breakpoint so display behavior does not leak upward from a smaller
+    breakpoint.
+
+    Returns ``None`` when no breakpoint requires padding.
+    """
+    classes: list[str] = []
+    has_visible_breakpoint = False
+
+    for breakpoint, columns in _DEFAULT_BREAKPOINT_COLUMNS:  # noqa: A001
+        span = _padding_span(
+            item_count,
+            columns=columns,
+        )
+
+        visible = span is not None
+
+        classes.append(
+            _display_class(
+                breakpoint,
+                visible=visible,
+            ),
+        )
+
+        if span is None:
+            continue
+
+        has_visible_breakpoint = True
+
+        classes.append(
+            _column_class(
+                breakpoint,
+                span=span,
+            ),
+        )
+
+    if not has_visible_breakpoint:
+        return None
+
+    return " ".join(classes)
+
+
+def _build_placeholder(
+    item_count: int,
+) -> _LaunchpadPlaceholder | None:
+    """Return one responsive placeholder when any breakpoint needs padding."""
+    classes = _responsive_padding_classes(
+        item_count,
+    )
+
+    if classes is None:
+        return None
+
+    return _LaunchpadPlaceholder(
+        classes=classes,
+    )
 
 
 @register.simple_tag
 def launchpad_pad(
     items: list[ResolvedNode] | tuple[ResolvedNode, ...],
-    *,
-    multiple: int = 2,
-) -> list[ResolvedNode | _LaunchpadPlaceholder]:
+) -> _LaunchpadPlaceholder | None:
     """
-    Return a presentation-only padded copy of resolved Launchpad items.
+    Return one optional responsive balancing placeholder.
 
-    The original resolved collection is never modified.
+    Real Launchpad items are never copied, replaced, or modified.
 
-    This helper is optional. Projects that do not need visual balancing should
-    render ``navigation.nodes`` directly.
+    The placeholder is visible only at breakpoints where the final row has
+    unused space. Its width expands to consume exactly that unused portion.
+
+    With the default 1 / 2 / 3 / 4 / 6-column grid, three real items behave
+    like:
+
+        xs:
+            1 / 1 / 1
+            no placeholder
+
+        sm:
+            2 / 1
+            placeholder fills the remaining 1 column
+
+        md:
+            3
+            no placeholder
+
+        lg:
+            3 + placeholder spanning 1 column
+
+        xl:
+            3 + placeholder spanning 3 columns
+
+    Templates may ignore this helper entirely when balancing is unnecessary.
     """
-    return _pad_items(
-        list(items),
-        multiple=multiple,
+    return _build_placeholder(
+        len(items),
     )
 
 

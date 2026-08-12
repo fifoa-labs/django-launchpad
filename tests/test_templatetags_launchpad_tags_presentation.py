@@ -1,7 +1,7 @@
 """
 tests/test_templatetags_launchpad_tags_presentation.py
 
-Tests for optional Launchpad presentation template helpers.
+Tests for optional responsive Launchpad presentation helpers.
 """
 
 from __future__ import annotations
@@ -34,181 +34,245 @@ def _render(
     )
 
 
-def test_pad_items_leaves_even_collection_unchanged() -> None:
-    """Padding to two should not add placeholders to an even collection."""
-    items = [
-        object(),
-        object(),
-    ]
-
-    result = presentation._pad_items(  # noqa: SLF001
-        items,
-        multiple=2,
-    )
-
-    assert result == items
-    assert result is not items
-
-
-def test_pad_items_adds_placeholder_for_odd_collection() -> None:
-    """Padding to two should add one placeholder to an odd collection."""
-    items = [
-        object(),
-        object(),
-        object(),
-    ]
-
-    result = presentation._pad_items(  # noqa: SLF001
-        items,
-        multiple=2,
-    )
-
-    assert len(result) == 4
-    assert result[:3] == items
-
-    placeholder = result[-1]
-
-    assert isinstance(
-        placeholder,
-        presentation._LaunchpadPlaceholder,  # noqa: SLF001
-    )
-
-
 @pytest.mark.parametrize(
-    ("count", "multiple", "expected_count"),
+    ("item_count", "columns", "expected"),
     [
-        (0, 2, 0),
-        (1, 2, 2),
-        (2, 2, 2),
-        (3, 2, 4),
-        (5, 2, 6),
-        (5, 3, 6),
-        (6, 3, 6),
-        (7, 3, 9),
-        (5, 4, 8),
-        (7, 6, 12),
-        (12, 6, 12),
+        (0, 1, None),
+        (1, 1, None),
+        (3, 1, None),
+        (16, 1, None),
+        (1, 2, 6),
+        (2, 2, None),
+        (3, 2, 6),
+        (16, 2, None),
+        (1, 3, 8),
+        (2, 3, 4),
+        (3, 3, None),
+        (4, 3, 8),
+        (16, 3, 8),
+        (1, 4, 9),
+        (2, 4, 6),
+        (3, 4, 3),
+        (4, 4, None),
+        (16, 4, None),
+        (1, 6, 10),
+        (2, 6, 8),
+        (3, 6, 6),
+        (4, 6, 4),
+        (5, 6, 2),
+        (6, 6, None),
+        (16, 6, 4),
     ],
 )
-def test_pad_items_pads_to_requested_multiple(
-    count: int,
-    multiple: int,
-    expected_count: int,
+def test_padding_span_returns_missing_grid_width(
+    item_count: int,
+    columns: int,
+    expected: int | None,
 ) -> None:
-    """Padding should extend collections to the requested item multiple."""
-    items = [object() for _ in range(count)]
-
-    result = presentation._pad_items(  # noqa: SLF001
-        items,
-        multiple=multiple,
+    """Padding span should consume exactly the unused portion of a row."""
+    assert (
+        presentation._padding_span(  # noqa: SLF001
+            item_count,
+            columns=columns,
+        )
+        == expected
     )
-
-    assert len(result) == expected_count
 
 
 @pytest.mark.parametrize(
-    "multiple",
+    "columns",
     [
         0,
         -1,
-        -10,
+        -6,
     ],
 )
-def test_pad_items_rejects_invalid_multiple(
-    multiple: int,
+def test_padding_span_rejects_non_positive_columns(
+    columns: int,
 ) -> None:
-    """Padding multiples must be positive integers."""
+    """Responsive grid column counts must be positive."""
     with pytest.raises(
         ValueError,
-        match="Launchpad padding multiple must be greater than 0",
+        match="Launchpad grid columns must be greater than 0",
     ):
-        presentation._pad_items(  # noqa: SLF001
-            [],
-            multiple=multiple,
+        presentation._padding_span(  # noqa: SLF001
+            3,
+            columns=columns,
         )
 
 
-def test_pad_items_does_not_modify_original_collection() -> None:
-    """Presentation padding should never mutate resolved navigation data."""
-    first = object()
-    second = object()
-    third = object()
-
-    items = [
-        first,
-        second,
-        third,
-    ]
-
-    original = list(
-        items,
-    )
-
-    result = presentation._pad_items(  # noqa: SLF001
-        items,
-        multiple=2,
-    )
-
-    assert items == original
-
-    assert result[:3] == original
-    assert len(result) == 4
-
-
-def test_pad_items_preserves_existing_item_identity() -> None:
-    """Padding should reuse original items rather than copying them."""
-    first = object()
-    second = object()
-    third = object()
-
-    result = presentation._pad_items(  # noqa: SLF001
-        [
-            first,
-            second,
-            third,
-        ],
-        multiple=2,
-    )
-
-    assert result[0] is first
-    assert result[1] is second
-    assert result[2] is third
-
-
-def test_pad_items_creates_independent_placeholders() -> None:
-    """Every required padding slot should receive its own placeholder."""
-    result = presentation._pad_items(  # noqa: SLF001
-        [
-            object(),
-        ],
-        multiple=4,
-    )
-
-    placeholders = result[1:]
-
-    assert len(placeholders) == 3
-
-    assert all(
-        isinstance(
-            item,
-            presentation._LaunchpadPlaceholder,  # noqa: SLF001
+@pytest.mark.parametrize(
+    "columns",
+    [
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+    ],
+)
+def test_padding_span_rejects_columns_that_do_not_divide_bootstrap_grid(
+    columns: int,
+) -> None:
+    """Configured column counts must divide Bootstrap's 12-unit grid."""
+    with pytest.raises(
+        ValueError,
+        match="Launchpad grid columns must divide evenly into 12",
+    ):
+        presentation._padding_span(  # noqa: SLF001
+            3,
+            columns=columns,
         )
-        for item in placeholders
-    )
 
+
+@pytest.mark.parametrize(
+    ("breakpoint", "span", "expected"),
+    [
+        ("", 12, "col-12"),
+        ("", 6, "col-6"),
+        ("sm", 6, "col-sm-6"),
+        ("md", 8, "col-md-8"),
+        ("lg", 3, "col-lg-3"),
+        ("xl", 4, "col-xl-4"),
+    ],
+)
+def test_column_class_builds_bootstrap_class(
+    breakpoint: str,  # noqa: A002
+    span: int,
+    expected: str,
+) -> None:
+    """Column helper should build the expected Bootstrap class."""
     assert (
-        len(
-            {id(item) for item in placeholders},
+        presentation._column_class(  # noqa: SLF001
+            breakpoint,
+            span=span,
         )
-        == 3
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("breakpoint", "visible", "expected"),
+    [
+        ("", False, "d-none"),
+        ("", True, "d-block"),
+        ("sm", False, "d-sm-none"),
+        ("sm", True, "d-sm-block"),
+        ("md", False, "d-md-none"),
+        ("md", True, "d-md-block"),
+        ("lg", False, "d-lg-none"),
+        ("lg", True, "d-lg-block"),
+        ("xl", False, "d-xl-none"),
+        ("xl", True, "d-xl-block"),
+    ],
+)
+def test_display_class_builds_bootstrap_class(
+    breakpoint: str,  # noqa: A002
+    visible: bool,  # noqa: FBT001
+    expected: str,
+) -> None:
+    """Display helper should explicitly control each responsive breakpoint."""
+    assert (
+        presentation._display_class(  # noqa: SLF001
+            breakpoint,
+            visible=visible,
+        )
+        == expected
+    )
+
+
+def test_responsive_padding_classes_for_three_items() -> None:
+    """Three items should balance only breakpoints with incomplete rows."""
+    result = presentation._responsive_padding_classes(  # noqa: SLF001
+        3,
+    )
+
+    assert result == (
+        "d-none d-sm-block col-sm-6 d-md-none d-lg-block col-lg-3 d-xl-block col-xl-6"
+    )
+
+
+def test_responsive_padding_classes_for_sixteen_items() -> None:
+    """Sixteen items should fill missing space only at md and xl."""
+    result = presentation._responsive_padding_classes(  # noqa: SLF001
+        16,
+    )
+
+    assert result == (
+        "d-none d-sm-none d-md-block col-md-8 d-lg-none d-xl-block col-xl-4"
+    )
+
+
+def test_responsive_padding_classes_for_twelve_items() -> None:
+    """Twelve items should require no placeholder at any breakpoint."""
+    assert (
+        presentation._responsive_padding_classes(  # noqa: SLF001
+            12,
+        )
+        is None
+    )
+
+
+def test_responsive_padding_classes_for_zero_items() -> None:
+    """An empty collection should not produce a presentation placeholder."""
+    assert (
+        presentation._responsive_padding_classes(  # noqa: SLF001
+            0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("item_count", "expected"),
+    [
+        (0, False),
+        (1, True),
+        (2, True),
+        (3, True),
+        (4, True),
+        (5, True),
+        (6, True),
+        (12, False),
+        (16, True),
+        (18, True),
+        (24, False),
+    ],
+)
+def test_build_placeholder_only_when_a_breakpoint_needs_balance(
+    item_count: int,
+    expected: bool,  # noqa: FBT001
+) -> None:
+    """A placeholder should exist only when at least one layout needs it."""
+    result = presentation._build_placeholder(  # noqa: SLF001
+        item_count,
+    )
+
+    assert (result is not None) is expected
+
+
+def test_build_placeholder_for_three_items_has_expected_classes() -> None:
+    """The responsive descriptor should carry its computed CSS classes."""
+    placeholder = presentation._build_placeholder(  # noqa: SLF001
+        3,
+    )
+
+    assert placeholder is not None
+
+    assert placeholder.classes == (
+        "d-none d-sm-block col-sm-6 d-md-none d-lg-block col-lg-3 d-xl-block col-xl-6"
     )
 
 
 def test_launchpad_placeholder_has_render_only_contract() -> None:
     """The placeholder should expose predictable non-navigation values."""
-    placeholder = presentation._LaunchpadPlaceholder()  # noqa: SLF001
+    placeholder = presentation._LaunchpadPlaceholder(  # noqa: SLF001
+        classes="d-none d-md-block col-md-8",
+    )
 
     assert placeholder.is_placeholder is True
+    assert placeholder.classes == "d-none d-md-block col-md-8"
 
     assert placeholder.title == "More to Explore"
     assert placeholder.short_title == "More to Explore"
@@ -241,7 +305,9 @@ def test_launchpad_placeholder_has_render_only_contract() -> None:
 
 def test_launchpad_placeholder_is_not_navigation_node() -> None:
     """Presentation placeholders should not impersonate Launchpad node kinds."""
-    placeholder = presentation._LaunchpadPlaceholder()  # noqa: SLF001
+    placeholder = presentation._LaunchpadPlaceholder(  # noqa: SLF001
+        classes="d-none",
+    )
 
     assert placeholder.is_link is False
     assert placeholder.is_section is False
@@ -251,8 +317,12 @@ def test_launchpad_placeholder_is_not_navigation_node() -> None:
 
 def test_launchpad_placeholders_have_independent_metadata() -> None:
     """Placeholder metadata mappings should never be shared."""
-    first = presentation._LaunchpadPlaceholder()  # noqa: SLF001
-    second = presentation._LaunchpadPlaceholder()  # noqa: SLF001
+    first = presentation._LaunchpadPlaceholder(  # noqa: SLF001
+        classes="d-none",
+    )
+    second = presentation._LaunchpadPlaceholder(  # noqa: SLF001
+        classes="d-none",
+    )
 
     first.metadata["example"] = True
 
@@ -265,8 +335,12 @@ def test_launchpad_placeholders_have_independent_metadata() -> None:
 
 def test_launchpad_placeholders_have_independent_icons() -> None:
     """Placeholder icon mappings should never be shared."""
-    first = presentation._LaunchpadPlaceholder()  # noqa: SLF001
-    second = presentation._LaunchpadPlaceholder()  # noqa: SLF001
+    first = presentation._LaunchpadPlaceholder(  # noqa: SLF001
+        classes="d-none",
+    )
+    second = presentation._LaunchpadPlaceholder(  # noqa: SLF001
+        classes="d-none",
+    )
 
     first.icon["value"] = "🚀"
 
@@ -281,61 +355,15 @@ def test_launchpad_placeholders_have_independent_icons() -> None:
     }
 
 
-def test_launchpad_pad_template_tag_defaults_to_pairs() -> None:
-    """The public tag should default to padding in multiples of two."""
+def test_launchpad_pad_template_tag_returns_responsive_placeholder() -> None:
+    """The public tag should expose one responsive placeholder descriptor."""
     output = _render(
         """
         {% load launchpad_tags %}
-        {% launchpad_pad items as padded %}
-        {{ padded|length }}
-        """,
-        {
-            "items": [
-                1,
-                2,
-                3,
-            ],
-        },
-    )
-
-    assert output.strip() == "4"
-
-
-def test_launchpad_pad_template_tag_accepts_multiple() -> None:
-    """Templates should be able to choose their preferred padding multiple."""
-    output = _render(
-        """
-        {% load launchpad_tags %}
-        {% launchpad_pad items multiple=4 as padded %}
-        {{ padded|length }}
-        """,
-        {
-            "items": [
-                1,
-                2,
-                3,
-                4,
-                5,
-            ],
-        },
-    )
-
-    assert output.strip() == "8"
-
-
-def test_launchpad_pad_template_tag_exposes_placeholder() -> None:
-    """Templates should be able to distinguish placeholders from real items."""
-    output = _render(
-        """
-        {% load launchpad_tags %}
-        {% launchpad_pad items multiple=2 as padded %}
-        {% for item in padded %}
-            {% if item.is_placeholder %}
-                PLACEHOLDER:{{ item.title }}:{{ item.icon.value }}
-            {% else %}
-                REAL
-            {% endif %}
-        {% endfor %}
+        {% launchpad_pad items as padding %}
+        {{ padding.is_placeholder }}|
+        {{ padding.title }}|
+        {{ padding.classes }}
         """,
         {
             "items": [
@@ -350,12 +378,31 @@ def test_launchpad_pad_template_tag_exposes_placeholder() -> None:
         output.split(),
     )
 
-    assert normalized.count("REAL") == 3
-    assert "PLACEHOLDER:More to Explore:✨" in normalized
+    assert normalized == (
+        "True| More to Explore| "
+        "d-none d-sm-block col-sm-6 d-md-none "
+        "d-lg-block col-lg-3 d-xl-block col-xl-6"
+    )
+
+
+def test_launchpad_pad_template_tag_returns_none_when_fully_balanced() -> None:
+    """A collection balanced at every breakpoint should need no placeholder."""
+    output = _render(
+        """
+        {% load launchpad_tags %}
+        {% launchpad_pad items as padding %}
+        {% if padding %}padding{% else %}none{% endif %}
+        """,
+        {
+            "items": [object() for _ in range(12)],
+        },
+    )
+
+    assert output.strip() == "none"
 
 
 def test_launchpad_pad_works_with_real_resolved_nodes() -> None:
-    """Padding should operate after normal Launchpad resolution."""
+    """Responsive padding should operate after normal Launchpad resolution."""
     user = create_user()
 
     launchpad = create_launchpad(
@@ -379,15 +426,10 @@ def test_launchpad_pad_works_with_real_resolved_nodes() -> None:
         """
         {% load launchpad_tags %}
         {% get_launchpad "home_cards" as navigation %}
-        {% launchpad_pad navigation.nodes multiple=2 as cards %}
-        {{ navigation.nodes|length }}|{{ cards|length }}|
-        {% for card in cards %}
-            {% if card.is_placeholder %}
-                placeholder
-            {% else %}
-                {{ card.title }}
-            {% endif %}
-        {% endfor %}
+        {% launchpad_pad navigation.nodes as padding %}
+        {{ navigation.nodes|length }}|
+        {{ padding.is_placeholder }}|
+        {{ padding.classes }}
         """,
         {
             "request": build_request(
@@ -400,18 +442,15 @@ def test_launchpad_pad_works_with_real_resolved_nodes() -> None:
         output.split(),
     )
 
-    assert normalized.startswith(
-        "3|4|",
+    assert normalized == (
+        "3| True| "
+        "d-none d-sm-block col-sm-6 d-md-none "
+        "d-lg-block col-lg-3 d-xl-block col-xl-6"
     )
-
-    assert "Item 0" in normalized
-    assert "Item 1" in normalized
-    assert "Item 2" in normalized
-    assert "placeholder" in normalized
 
 
 def test_launchpad_pad_does_not_change_resolved_launchpad_nodes() -> None:
-    """Presentation padding should leave navigation truth unchanged."""
+    """Responsive balancing should leave canonical navigation unchanged."""
     user = create_user()
 
     launchpad = create_launchpad(
@@ -433,8 +472,8 @@ def test_launchpad_pad_does_not_change_resolved_launchpad_nodes() -> None:
         """
         {% load launchpad_tags %}
         {% get_launchpad "home_cards" as navigation %}
-        {% launchpad_pad navigation.nodes multiple=2 as cards %}
-        {{ navigation.nodes|length }}|{{ cards|length }}
+        {% launchpad_pad navigation.nodes as padding %}
+        {{ navigation.nodes|length }}
         """,
         {
             "request": build_request(
@@ -443,12 +482,7 @@ def test_launchpad_pad_does_not_change_resolved_launchpad_nodes() -> None:
         },
     )
 
-    assert (
-        "".join(
-            output.split(),
-        )
-        == "3|4"
-    )
+    assert output.strip() == "3"
 
 
 def test_presentation_module_exports_launchpad_pad() -> None:
