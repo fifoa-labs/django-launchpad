@@ -1,0 +1,244 @@
+{# src/launchpad/templates/launchpad/generic/cards.html #}
+{% load i18n %}
+
+{% comment %}
+  src/launchpad/templates/launchpad/generic/cards.html
+
+  Generic Launchpad card renderer.
+
+  This template is intentionally theme- and framework-agnostic. It provides
+  semantic card markup for displaying resolved Launchpad links without
+  requiring Bootstrap, Tailwind CSS, Phoenix, or another frontend system.
+
+  Top-level usage:
+
+      {% include "launchpad/generic/cards.html" with launchpad=navigation only %}
+
+  The renderer supports:
+
+  - top-level link nodes
+  - link children contained within sections
+  - icons
+  - descriptions
+  - call-to-action labels
+  - disabled destinations
+  - active state
+  - accessibility metadata
+
+  Structural separators are intentionally omitted because they do not have a
+  natural card representation.
+
+  Projects requiring theme-specific layout or responsive balancing should
+  provide their own renderer.
+{% endcomment %}
+
+{% if launchpad and launchpad.exists %}
+  <div
+    class="launchpad-cards"
+    data-launchpad-code="{{ launchpad.code }}"
+  >
+    {% if launchpad.nodes %}
+
+      {% for node in launchpad.nodes %}
+
+        {% if node.is_link %}
+          <article
+            class="launchpad-card{% if node.is_active %} is-active{% endif %}{% if not node.enabled %} is-disabled{% endif %}"
+            data-launchpad-node="{{ node.code }}"
+          >
+            <div class="launchpad-card-body">
+
+              {% if node.icon.kind != "none" or node.title %}
+                <header class="launchpad-card-header">
+
+                  {% if node.icon.kind != "none" %}
+                    <span
+                      class="launchpad-card-icon"
+                      aria-hidden="true"
+                    >
+                      {% if node.icon.kind == "emoji" %}
+                        {{ node.icon.value }}
+                      {% elif node.icon.kind == "fa" %}
+                        <i class="{{ node.icon.value }}"></i>
+                      {% elif node.icon.kind == "fe" %}
+                        <i data-feather="{{ node.icon.value }}"></i>
+                      {% endif %}
+                    </span>
+                  {% endif %}
+
+                  {% if node.title %}
+                    <h3 class="launchpad-card-title">
+                      {{ node.title }}
+                    </h3>
+                  {% endif %}
+
+                </header>
+              {% endif %}
+
+              {% if node.description %}
+                <p class="launchpad-card-description">
+                  {{ node.description }}
+                </p>
+              {% endif %}
+
+              {% if node.enabled and node.url != "#" %}
+                <div class="launchpad-card-action">
+                  <a
+                    class="launchpad-card-link"
+                    href="{{ node.url }}"
+                    {% if node.target and node.target != "_self" %}
+                      target="{{ node.target }}"
+                    {% endif %}
+                    {% if node.rel %}
+                      rel="{{ node.rel }}"
+                    {% endif %}
+                    {% if node.download %}
+                      download
+                    {% endif %}
+                    {% if node.tooltip %}
+                      title="{{ node.tooltip }}"
+                    {% endif %}
+                    {% if node.aria_label %}
+                      aria-label="{{ node.aria_label }}"
+                    {% endif %}
+                    {% if node.is_active %}
+                      aria-current="page"
+                    {% endif %}
+                  >
+                    {% if node.cta_label %}
+                      {{ node.cta_label }}
+                    {% else %}
+                      {% trans "Open" %}
+                    {% endif %}
+                  </a>
+                </div>
+              {% else %}
+                <div
+                  class="launchpad-card-action launchpad-card-action-disabled"
+                  aria-disabled="true"
+                  {% if node.tooltip %}
+                    title="{{ node.tooltip }}"
+                  {% elif node.disabled_reason %}
+                    title="{{ node.disabled_reason }}"
+                  {% endif %}
+                >
+                  {% if node.disabled_reason %}
+                    <span class="launchpad-card-disabled-reason">
+                      {{ node.disabled_reason }}
+                    </span>
+                  {% endif %}
+                </div>
+              {% endif %}
+
+            </div>
+          </article>
+
+        {% elif node.is_section %}
+
+          {% for child in node.children %}
+            {% if child.is_link %}
+              <article
+                class="launchpad-card{% if child.is_active %} is-active{% endif %}{% if not child.enabled %} is-disabled{% endif %}"
+                data-launchpad-node="{{ child.code }}"
+                data-launchpad-section="{{ node.code }}"
+              >
+                <div class="launchpad-card-body">
+
+                  {% if child.icon.kind != "none" or child.title %}
+                    <header class="launchpad-card-header">
+
+                      {% if child.icon.kind != "none" %}
+                        <span
+                          class="launchpad-card-icon"
+                          aria-hidden="true"
+                        >
+                          {% if child.icon.kind == "emoji" %}
+                            {{ child.icon.value }}
+                          {% elif child.icon.kind == "fa" %}
+                            <i class="{{ child.icon.value }}"></i>
+                          {% elif child.icon.kind == "fe" %}
+                            <i data-feather="{{ child.icon.value }}"></i>
+                          {% endif %}
+                        </span>
+                      {% endif %}
+
+                      {% if child.title %}
+                        <h3 class="launchpad-card-title">
+                          {{ child.title }}
+                        </h3>
+                      {% endif %}
+
+                    </header>
+                  {% endif %}
+
+                  {% if child.description %}
+                    <p class="launchpad-card-description">
+                      {{ child.description }}
+                    </p>
+                  {% endif %}
+
+                  {% if child.enabled and child.url != "#" %}
+                    <div class="launchpad-card-action">
+                      <a
+                        class="launchpad-card-link"
+                        href="{{ child.url }}"
+                        {% if child.target and child.target != "_self" %}
+                          target="{{ child.target }}"
+                        {% endif %}
+                        {% if child.rel %}
+                          rel="{{ child.rel }}"
+                        {% endif %}
+                        {% if child.download %}
+                          download
+                        {% endif %}
+                        {% if child.tooltip %}
+                          title="{{ child.tooltip }}"
+                        {% endif %}
+                        {% if child.aria_label %}
+                          aria-label="{{ child.aria_label }}"
+                        {% endif %}
+                        {% if child.is_active %}
+                          aria-current="page"
+                        {% endif %}
+                      >
+                        {% if child.cta_label %}
+                          {{ child.cta_label }}
+                        {% else %}
+                          {% trans "Open" %}
+                        {% endif %}
+                      </a>
+                    </div>
+                  {% else %}
+                    <div
+                      class="launchpad-card-action launchpad-card-action-disabled"
+                      aria-disabled="true"
+                      {% if child.tooltip %}
+                        title="{{ child.tooltip }}"
+                      {% elif child.disabled_reason %}
+                        title="{{ child.disabled_reason }}"
+                      {% endif %}
+                    >
+                      {% if child.disabled_reason %}
+                        <span class="launchpad-card-disabled-reason">
+                          {{ child.disabled_reason }}
+                        </span>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                </div>
+              </article>
+            {% endif %}
+          {% endfor %}
+
+        {% endif %}
+
+      {% endfor %}
+
+    {% else %}
+      <p class="launchpad-empty">
+        {% trans "No navigation items are available." %}
+      </p>
+    {% endif %}
+  </div>
+{% endif %}

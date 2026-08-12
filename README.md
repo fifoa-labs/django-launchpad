@@ -228,8 +228,9 @@ public reader API.
 - Active matching by path or Django view name
 - Disabled links that remain visible but non-navigable
 - Renderer-neutral metadata
-- Generic recursive Django template
-- Optional presentation-only collection padding
+- Generic recursive tree renderer
+- Generic semantic card renderer
+- Optional responsive row-balancing helper for Bootstrap-style card grids
 - Optional persistent configuration caching
 - Generation-based cache invalidation
 - Configurable Django cache alias
@@ -344,7 +345,92 @@ Render the bundled generic tree:
 {% include "launchpad/generic/tree.html" with launchpad=navigation only %}
 ```
 
+Or render the same resolved Launchpad as semantic cards:
+
+```django
+{% include "launchpad/generic/cards.html" with launchpad=navigation only %}
+```
+
 Or pass the same `navigation` object to a project-owned renderer.
+
+---
+
+## Built-In Reference Renderers
+
+Launchpad ships two lightweight reference renderers:
+
+```text
+launchpad/generic/tree.html
+launchpad/generic/cards.html
+```
+
+They are optional.
+
+A consuming project may use either renderer directly, override them through
+normal Django template resolution, or ignore them completely and provide its
+own theme-specific templates.
+
+### Generic Tree Renderer
+
+Use the tree renderer when the Launchpad should preserve its hierarchy:
+
+```django
+{% load launchpad_tags %}
+{% get_launchpad "primary_navigation" as navigation %}
+
+{% include "launchpad/generic/tree.html" with launchpad=navigation only %}
+```
+
+The tree renderer supports nested sections, links, separators, icons, active
+and disabled state, accessibility attributes, recursive children, and empty
+Launchpads.
+
+It emits neutral `launchpad-*` CSS hooks and does not ship CSS or JavaScript.
+
+### Generic Card Renderer
+
+Use the card renderer when resolved navigation should be presented as a
+collection of semantic cards:
+
+```django
+{% load launchpad_tags %}
+{% get_launchpad "homepage" as navigation %}
+
+{% include "launchpad/generic/cards.html" with launchpad=navigation only %}
+```
+
+The card renderer supports:
+
+- top-level links
+- link children contained in sections
+- icons
+- titles and descriptions
+- CTA labels
+- active and disabled state
+- target, `rel`, and download attributes
+- tooltip and ARIA metadata
+- empty Launchpads
+
+Sections remain structural: their link children become cards rather than the
+section itself becoming a card.
+
+Separators are intentionally ignored because they do not have a natural card
+representation.
+
+The generic card renderer uses semantic classes such as:
+
+```text
+launchpad-cards
+launchpad-card
+launchpad-card-header
+launchpad-card-icon
+launchpad-card-title
+launchpad-card-description
+launchpad-card-action
+launchpad-card-link
+```
+
+It does not depend on Bootstrap, Tailwind CSS, Phoenix, or another theme.
 
 ---
 
@@ -579,48 +665,131 @@ invalidation.
 
 ---
 
-## Optional Presentation Padding
+## Optional Responsive Row Balancing
 
-Some card or tile renderers look better when their item count is divisible
-by a particular number.
+Some responsive card grids look awkward when the real items wrap onto another
+row and leave that final row partially empty.
 
-Launchpad provides an optional presentation-only template helper:
+Launchpad provides an optional `launchpad_pad` template helper for this
+presentation concern.
+
+The helper does **not** add fake nodes to the resolved Launchpad.
+
+Instead, it returns either:
+
+- one render-only balancing placeholder descriptor, or
+- `None` when no breakpoint requires balancing.
+
+Example:
 
 ```django
 {% load launchpad_tags %}
-
 {% get_launchpad "home" as navigation %}
-{% launchpad_pad navigation.nodes multiple=2 as cards %}
+
+{% launchpad_pad navigation.nodes as padding %}
+
+{% if padding %}
+  <div class="{{ padding.classes }}">
+    {{ padding.title }}
+  </div>
+{% endif %}
 ```
 
-Then render the padded collection:
+### When Does Padding Appear?
 
-```django
-{% for card in cards %}
-    {% if card.is_placeholder %}
-        {# render a visual placeholder #}
-    {% else %}
-        {# render the real ResolvedNode #}
-    {% endif %}
-{% endfor %}
-```
+Padding is needed only when both conditions are true at a responsive
+breakpoint:
 
-### The Important Boundary
+1. the real items have wrapped beyond the first row, and
+2. the final row is incomplete.
 
-Padding happens **after** normal Launchpad resolution.
+If all real items fit on one row, there is nothing to balance.
 
-The original navigation remains unchanged:
+If the final row is already complete, there is nothing to balance.
+
+The default responsive grid is:
 
 ```text
-database
-    ↓
-Launchpad reader
-    ↓
-ResolvedLaunchpad
-    ↓
-optional launchpad_pad
-    ↓
-renderer
+xs: 1 column
+sm: 2 columns
+md: 3 columns
+lg: 4 columns
+xl: 6 columns
+```
+
+Three real items behave like:
+
+```text
+xs → 1 / 1 / 1     no placeholder
+sm → 2 / 1         placeholder fills the remaining slot
+md → 3             no placeholder
+lg → 3             no placeholder
+xl → 3             no placeholder
+```
+
+Sixteen real items behave like:
+
+```text
+xs → complete single-column rows         no placeholder
+sm → complete two-column rows            no placeholder
+md → 3 / 3 / 3 / 3 / 3 / 1             placeholder fills 2 slots
+lg → 4 / 4 / 4 / 4                       no placeholder
+xl → 6 / 6 / 4                           placeholder fills 2 slots
+```
+
+### Responsive Width
+
+The balancing placeholder expands across exactly the unused portion of the
+final row.
+
+For a Bootstrap-style twelve-unit grid:
+
+```text
+16 items at md / 3 columns
+→ final row has 1 of 3 items
+→ 2 columns are missing
+→ placeholder spans 8 of 12 grid units
+
+16 items at xl / 6 columns
+→ final row has 4 of 6 items
+→ 2 columns are missing
+→ placeholder spans 4 of 12 grid units
+```
+
+### Bootstrap-Compatible Helper
+
+The current `launchpad_pad` helper emits Bootstrap-compatible responsive
+display and column classes such as:
+
+```text
+d-none
+d-sm-block
+col-sm-6
+d-md-none
+d-lg-none
+d-xl-none
+```
+
+This helper is optional.
+
+The core Launchpad models, readers, visibility engine, cache, generic tree
+renderer, and generic card renderer do **not** require Bootstrap.
+
+Projects using another frontend system may ignore `launchpad_pad` and
+implement balancing in their own renderer.
+
+### Placeholder Contract
+
+The render-only placeholder exposes presentation values such as:
+
+```text
+is_placeholder = True
+title          = "More to Explore"
+description    = "New tools, reports, and operational insights will appear here."
+url            = "#"
+enabled        = False
+icon           = {"kind": "emoji", "value": "✨"}
+classes        = "<responsive Bootstrap-compatible classes>"
 ```
 
 A placeholder is:
@@ -633,51 +802,35 @@ A placeholder is:
 - not part of the canonical navigation tree
 - not navigable
 
-Projects that do not need padding simply do not use `launchpad_pad`.
+The original `navigation.nodes` collection is never modified.
 
-### Padding Multiples
+### Recommended Usage
 
-The default multiple is `2`:
-
-```django
-{% launchpad_pad navigation.nodes as cards %}
-```
-
-An explicit multiple may be supplied:
+The balancing helper is most useful inside a theme-specific card renderer that
+already knows its responsive grid:
 
 ```django
-{% launchpad_pad navigation.nodes multiple=3 as cards %}
+{% for node in navigation.nodes %}
+  {# render real cards #}
+{% endfor %}
+
+{% launchpad_pad navigation.nodes as padding %}
+
+{% if padding %}
+  <div class="{{ padding.classes }}">
+    {# render the optional balancing card #}
+  </div>
+{% endif %}
 ```
 
-Examples:
+Page templates can then remain simple:
 
-```text
-5 items, multiple=2  -> 6
-5 items, multiple=3  -> 6
-5 items, multiple=4  -> 8
-6 items, multiple=3  -> 6
+```django
+{% load launchpad_tags %}
+{% get_launchpad "home" as navigation %}
+
+{% include "navigation/cards.html" with navigation=navigation only %}
 ```
-
-Padding does not attempt to infer browser viewport size or responsive CSS
-breakpoints.
-
-The renderer chooses the multiple appropriate for its presentation.
-
-### Placeholder Contract
-
-The built-in render-only placeholder exposes predictable presentation
-values such as:
-
-```text
-is_placeholder = True
-title          = "More to Explore"
-url            = "#"
-enabled        = False
-icon           = {"kind": "emoji", "value": "✨"}
-```
-
-The placeholder is deliberately a presentation artifact, not fake
-navigation data.
 
 ---
 
@@ -695,8 +848,9 @@ The package does not require:
 - AdminLTE
 - JavaScript navigation libraries
 
-The generic template uses neutral `launchpad-*` classes and demonstrates
-recursive rendering. It does not ship a theme, CSS, or JavaScript.
+The bundled generic renderers use neutral `launchpad-*` classes and provide
+reference implementations for tree and card presentations. They do not ship
+a theme, CSS, or JavaScript.
 
 A consuming project may create any renderer it needs:
 
@@ -992,8 +1146,8 @@ node.enabled_override = False
 node.disabled_reason_override = "Unavailable in this workspace."
 ```
 
-Disabled nodes resolve to `#`, and the generic renderer emits
-non-clickable markup with `aria-disabled="true"`.
+Disabled nodes resolve to `#`, and the generic renderers emit non-clickable
+markup with `aria-disabled="true"`.
 
 ---
 
@@ -1050,6 +1204,49 @@ Django admin is a management interface, not a rendering requirement.
 
 ---
 
+## Template Tags
+
+Templates load the complete Launchpad tag library with:
+
+```django
+{% load launchpad_tags %}
+```
+
+The tag implementation is internally split into focused modules, but the
+template-facing API remains a single library.
+
+### `get_launchpad`
+
+Resolve a Launchpad:
+
+```django
+{% get_launchpad "primary_navigation" as navigation %}
+```
+
+Supply an explicit user when needed:
+
+```django
+{% get_launchpad "primary_navigation" user=request.user as navigation %}
+```
+
+Pass runtime context values:
+
+```django
+{% get_launchpad "person_actions" person=person as navigation %}
+```
+
+### `launchpad_pad`
+
+Build an optional responsive balancing descriptor:
+
+```django
+{% launchpad_pad navigation.nodes as padding %}
+```
+
+The helper never changes the resolved Launchpad or its node collection.
+
+---
+
 ## Public Python API
 
 Models:
@@ -1086,13 +1283,13 @@ Cache invalidation for signal-bypassing bulk operations:
 from launchpad.cache import invalidate_configuration_cache
 ```
 
-Template tags:
+Template usage:
 
 ```django
 {% load launchpad_tags %}
 
 {% get_launchpad "primary_navigation" as navigation %}
-{% launchpad_pad navigation.nodes multiple=2 as cards %}
+{% launchpad_pad navigation.nodes as padding %}
 ```
 
 ---
@@ -1104,6 +1301,7 @@ Launchpad intentionally does not:
 - replace authorization in Django views
 - generate project views or URL patterns
 - require a frontend framework
+- require Bootstrap
 - ship an opinionated visual theme
 - bundle CSS or JavaScript
 - bundle icon libraries
@@ -1116,8 +1314,12 @@ Launchpad intentionally does not:
 - require persistent caching
 - persist presentation placeholders
 
+The optional responsive padding helper emits Bootstrap-compatible classes,
+but using that helper is not required.
+
 It is a focused Django application for navigation data, policy, resolution,
-composition, and optional configuration caching.
+composition, optional configuration caching, and lightweight reference
+rendering.
 
 ---
 
@@ -1186,21 +1388,28 @@ FIFOA Labs packages.
 
 ## Project Status
 
-The current version is `0.2.0`.
-
 `django-launchpad` is suitable for integration and real-world use, but its
-public API remains pre-1.0 and may continue to evolve as the package is
-adopted by additional Django projects.
+public API remains pre-1.0 and may continue to evolve as the package is adopted
+by additional Django projects.
 
-`0.2.0` adds optional configuration caching, request-scoped visibility
-reuse, automatic transaction-safe cache invalidation, a modularized reader
-implementation, and optional presentation-only Launchpad padding.
+Recent development has added:
+
+- optional configuration caching
+- request-scoped visibility reuse
+- automatic transaction-safe cache invalidation
+- modular reader internals
+- split template-tag internals behind the same `{% load launchpad_tags %}` API
+- optional responsive row balancing
+- a generic semantic card renderer alongside the existing generic tree
+  renderer
 
 Semantic versioning is used:
 
-- patch releases fix bugs and documentation
+- patch releases fix bugs and documentation and may refine existing behavior
 - minor `0.x` releases may add features or refine pre-1.0 APIs
 - `1.0.0` will mark a stable public compatibility commitment
+
+See the PyPI badge and `CHANGELOG.md` for the currently released version.
 
 ---
 
